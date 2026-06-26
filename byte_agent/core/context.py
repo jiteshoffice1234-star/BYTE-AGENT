@@ -1,30 +1,19 @@
-"""Context management for conversations."""
+"""Simple conversation context tracking."""
 
-from dataclasses import dataclass, field
+import os
 from typing import List, Dict, Any
-from datetime import datetime
 
 
-@dataclass
-class Message:
-    role: str
-    content: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class Context:
-    messages: List[Message] = field(default_factory=list)
-    working_directory: str = ""
-    project_info: Dict[str, Any] = field(default_factory=dict)
+    def __init__(self, working_directory: str = ""):
+        self.working_directory = working_directory or os.getcwd()
+        self.messages: List[Dict[str, str]] = []
 
-    def add_message(self, role: str, content: str, **metadata):
-        self.messages.append(Message(role=role, content=content, metadata=metadata))
+    def add_message(self, role: str, content: str):
+        self.messages.append({"role": role, "content": content})
 
-    def get_history(self, limit: int = 50) -> List[Dict[str, str]]:
-        recent = self.messages[-limit:]
-        return [{"role": m.role, "content": m.content} for m in recent]
+    def get_history(self, limit: int = 20) -> List[Dict[str, str]]:
+        return self.messages[-limit:]
 
     def clear(self):
         self.messages.clear()

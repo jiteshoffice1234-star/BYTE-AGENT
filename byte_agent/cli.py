@@ -1,4 +1,4 @@
-"""BYTE AGENT CLI - Super simple for non-coders."""
+"""BYTE AGENT CLI v2.0 - Professional AI Coding Agent."""
 
 import sys
 import os
@@ -8,89 +8,53 @@ from .core.agent import ByteAgent
 from .core.config import Config
 
 
-# Detect if running in a real terminal
-HAS_TTY = sys.stdin.isatty() and sys.stdout.isatty()
-
-# Try to use rich if possible
-if HAS_TTY:
-    try:
-        from rich.console import Console
-        from rich.panel import Panel
-        from rich.markdown import Markdown
-        from rich.syntax import Syntax
-        RICH_OK = True
-    except:
-        RICH_OK = False
-else:
-    RICH_OK = False
-
-
-def print_response(response, title="BYTE"):
-    """Print response, using rich if available."""
-    if RICH_OK:
+def print_box(text, title="BYTE"):
+    """ASCII box printer - works on any terminal."""
+    w = 58
+    lines = text.split("\n")
+    safe_lines = []
+    for line in lines:
         try:
-            console = Console()
-            if response.startswith("--- ") and "lines)" in response:
-                console.print(Syntax(response, "python", theme="monokai"))
-            elif response.startswith("```"):
-                lines = response.split("\n")
-                lang = lines[0].replace("```", "").strip()
-                code = "\n".join(lines[1:-1])
-                console.print(Syntax(code, lang or "python", theme="monokai"))
-            else:
-                panel = Panel(Markdown(response), title=title, border_style="cyan")
-                console.print(panel)
-            return
+            safe_lines.append(line.encode("ascii", "replace").decode("ascii"))
         except:
-            pass
+            safe_lines.append("[encoded]")
 
-    # Plain text fallback
-    w = 60
     print()
-    print("=" * w)
+    print(f"  {'='*w}")
     print(f"  {title}")
-    print("=" * w)
-    text = response.encode("ascii", "replace").decode("ascii")
-    print(text)
-    print("=" * w)
-    print()
-
-
-def banner():
-    text = """
-    ===========================================
-       BBBB   Y   Y   TTTTT   EEEE
-       B   B   Y Y      T     E
-       BBBB     Y       T     EEE
-       B   B    Y       T     E
-       BBBB     Y       T     EEEE
-    ===========================================
-       Your AI Coding Agent
-       Just type what you want!
-    ===========================================
-    """
-    if RICH_OK:
-        try:
-            console = Console()
-            console.print(Panel(text.strip(), style="bold cyan"))
-            console.print("[green]Examples:[/green] create a calculator | make a website | help")
-            print()
-            return
-        except:
-            pass
-    print(text.strip())
-    print("Examples: create a calculator | make a website | help")
+    print(f"  {'='*w}")
+    for line in safe_lines:
+        if len(line) > w:
+            print(f"  {line[:w]}")
+            print(f"  {line[w:]}")
+        else:
+            print(f"  {line}")
+    print(f"  {'='*w}")
     print()
 
 
 def main():
-    banner()
-    config = Config.load()
+    config_file = Path("config.json")
+    config = Config.load(str(config_file) if config_file.exists() else "config.json")
+
+    print()
+    print("  ==========================================================")
+    print("    BBBB   Y   Y   TTTTT   EEEE                          ")
+    print("    B   B   Y Y      T     E     AGENT v2.0                ")
+    print("    BBBB     Y       T     EEE                            ")
+    print("    B   B    Y       T     E                              ")
+    print("    BBBB     Y       T     EEEE  Professional Coding Agent ")
+    print("  ==========================================================")
+    print()
+    print("  Just tell me what you want to build!")
+    print("  Examples: 'create a calculator' | 'make a website' | 'help'")
+    print()
+
     agent = ByteAgent(config)
 
     while True:
         try:
-            inp = input("You> ")
+            inp = input("  You> ")
         except (EOFError, KeyboardInterrupt):
             break
 
@@ -102,10 +66,11 @@ def main():
         if response == "EXIT":
             break
 
-        print_response(response)
+        print_box(response)
 
     print()
-    print("BYTE disconnected. Come back anytime!")
+    print("  BYTE disconnected. Come back anytime!")
+    print()
 
 
 if __name__ == "__main__":
