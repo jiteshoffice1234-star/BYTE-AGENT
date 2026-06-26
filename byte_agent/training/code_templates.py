@@ -180,7 +180,7 @@ class TodoApp:
         print(f"\\n{'ID':<4} {'Done':<6} {'Priority':<10} Title")
         print("-" * 50)
         for t in self.todos:
-            done = "✓" if t["done"] else " "
+            done = "[x]" if t["done"] else " "
             print(f"{t['id']:<4} [{done}]    {t['priority']:<10} {t['title']}")
 
     def done(self, todo_id: int):
@@ -688,7 +688,7 @@ class TodoApp {
         console.log("\\nID  Done  Priority   Title");
         console.log("-".repeat(40));
         this.todos.forEach(t => {
-            const done = t.done ? "✓" : " ";
+            const done = t.done ? "[x]" : " ";
             console.log(`${t.id.toString().padEnd(3)} [${done}]   ${t.priority.padEnd(10)} ${t.title}`);
         });
     }
@@ -1224,17 +1224,17 @@ app.listen(PORT, () => {
     </div>
     <div class="features">
         <div class="feature">
-            <div class="icon">⚡</div>
+            <div class="icon">[BOLT]</div>
             <h3>Lightning Fast</h3>
             <p>Build and deploy in minutes, not days. Accelerate your development.</p>
         </div>
         <div class="feature">
-            <div class="icon">🔒</div>
+            <div class="icon">[LOCK]</div>
             <h3>Secure</h3>
             <p>Enterprise-grade security built in. Your code stays safe.</p>
         </div>
         <div class="feature">
-            <div class="icon">🎯</div>
+            <div class="icon">[TARGET]</div>
             <h3>Precise</h3>
             <p>AI-powered suggestions that understand your codebase.</p>
         </div>

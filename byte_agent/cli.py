@@ -1,50 +1,96 @@
-"""BYTE AGENT CLI - Like Codex, but local."""
+"""BYTE AGENT CLI - Super simple for non-coders."""
 
 import sys
 import os
 from pathlib import Path
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.markdown import Markdown
-from rich.syntax import Syntax
-from rich.table import Table
-
 from .core.agent import ByteAgent
 from .core.config import Config
 
 
-console = Console()
+# Detect if running in a real terminal
+HAS_TTY = sys.stdin.isatty() and sys.stdout.isatty()
+
+# Try to use rich if possible
+if HAS_TTY:
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.markdown import Markdown
+        from rich.syntax import Syntax
+        RICH_OK = True
+    except:
+        RICH_OK = False
+else:
+    RICH_OK = False
+
+
+def print_response(response, title="BYTE"):
+    """Print response, using rich if available."""
+    if RICH_OK:
+        try:
+            console = Console()
+            if response.startswith("--- ") and "lines)" in response:
+                console.print(Syntax(response, "python", theme="monokai"))
+            elif response.startswith("```"):
+                lines = response.split("\n")
+                lang = lines[0].replace("```", "").strip()
+                code = "\n".join(lines[1:-1])
+                console.print(Syntax(code, lang or "python", theme="monokai"))
+            else:
+                panel = Panel(Markdown(response), title=title, border_style="cyan")
+                console.print(panel)
+            return
+        except:
+            pass
+
+    # Plain text fallback
+    w = 60
+    print()
+    print("=" * w)
+    print(f"  {title}")
+    print("=" * w)
+    text = response.encode("ascii", "replace").decode("ascii")
+    print(text)
+    print("=" * w)
+    print()
 
 
 def banner():
-    b = """
-    ===============================================
-       BBBB  Y   Y TTTTT EEEE
-       B   B  Y Y    T   E
-       BBBB    Y     T   EEE
-       B   B   Y     T   E
-       BBBB    Y     T   EEEE
-    ===============================================
-       v0.1.0 - Local Coding Agent
-       Like Codex, but on YOUR machine
-    ===============================================
+    text = """
+    ===========================================
+       BBBB   Y   Y   TTTTT   EEEE
+       B   B   Y Y      T     E
+       BBBB     Y       T     EEE
+       B   B    Y       T     E
+       BBBB     Y       T     EEEE
+    ===========================================
+       Your AI Coding Agent
+       Just type what you want!
+    ===========================================
     """
-    console.print(Panel(b.strip(), style="bold cyan"))
+    if RICH_OK:
+        try:
+            console = Console()
+            console.print(Panel(text.strip(), style="bold cyan"))
+            console.print("[green]Examples:[/green] create a calculator | make a website | help")
+            print()
+            return
+        except:
+            pass
+    print(text.strip())
+    print("Examples: create a calculator | make a website | help")
+    print()
 
 
 def main():
     banner()
     config = Config.load()
     agent = ByteAgent(config)
-    cwd_display = agent.context.working_directory
-    console.print(f"[green]>> Connected:[/green] {cwd_display}")
-    console.print("[dim]>> Type 'help' for commands, 'quit' to exit[/dim]\n")
 
     while True:
         try:
-            short = os.path.basename(agent.context.working_directory) or agent.context.working_directory
-            inp = input(f"[{short}]> ")
+            inp = input("You> ")
         except (EOFError, KeyboardInterrupt):
             break
 
@@ -56,22 +102,10 @@ def main():
         if response == "EXIT":
             break
 
-        if response.startswith("--- ") and "lines)" in response:
-            console.print(Syntax(response, "python", theme="monokai", line_numbers=True))
-        elif response.startswith("Contents of"):
-            console.print(Panel(response, title="Files", border_style="green"))
-        elif response.startswith("Error") or response.startswith("STDERR"):
-            console.print(Panel(response, title="Error", border_style="red"))
-        elif response.startswith("```"):
-            lines = response.split("\n")
-            lang = lines[0].replace("```", "").strip()
-            code = "\n".join(lines[1:-1])
-            console.print(Syntax(code, lang or "python", theme="monokai"))
-        else:
-            console.print(Panel(Markdown(response), title="BYTE", border_style="cyan"))
-        console.print()
+        print_response(response)
 
-    console.print("[yellow]>> BYTE AGENT disconnected[/yellow]")
+    print()
+    print("BYTE disconnected. Come back anytime!")
 
 
 if __name__ == "__main__":
