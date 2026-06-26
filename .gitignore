@@ -1,0 +1,14 @@
+# Byte Agent
+.byte_memory/
+.byte_sessions/
+.byte_history
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+config.json
+*.log
+.DS_Store
+Thumbs.db
