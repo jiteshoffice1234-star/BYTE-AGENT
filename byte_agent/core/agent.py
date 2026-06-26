@@ -1,20 +1,21 @@
-"""BYTE AGENT - Full Coding Agent like Codex."""
+"""BYTE AGENT - Full Coding Agent like Codex with training."""
 
 import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 from .config import Config
 from .context import Context
+from ..training import SYSTEM_PROMPT, PERSONALITY_PROMPTS, CodeTemplates, SmartResponder
 
 
 class ByteAgent:
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config.load()
         self.context = Context(working_directory=os.getcwd())
+        self.responder = SmartResponder(agent=self)
         self._setup_tools()
 
     def _setup_tools(self):
@@ -37,11 +38,11 @@ class ByteAgent:
 
     def process_input(self, user_input: str) -> str:
         self.context.add_message("user", user_input)
-        response = self._execute_command(user_input)
+        response = self._execute(user_input)
         self.context.add_message("assistant", response)
         return response
 
-    def _execute_command(self, user_input: str) -> str:
+    def _execute(self, user_input: str) -> str:
         cmd = user_input.strip().lower()
         parts = user_input.strip().split(maxsplit=1)
         command = parts[0].lower() if parts else ""
@@ -49,51 +50,50 @@ class ByteAgent:
 
         if command in ("read", "cat", "open"):
             return self.read_file(args) if args else "Usage: read <filename>"
-        
+
         elif command in ("write", "save"):
             return self._handle_write(args)
-        
-        elif command in ("edit", "modify"):
+
+        elif command in ("edit", "modify", "replace"):
             return self._handle_edit(args)
-        
+
         elif command in ("create", "new", "touch"):
+            if args and not args.endswith((".py", ".js", ".ts", ".html", ".css", ".json", ".txt", ".md", ".sql", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".env", ".gitignore", ".dockerfile")):
+                return self.responder.respond(user_input)
             return self._handle_create(args)
-        
+
         elif command in ("ls", "dir", "list", "files"):
             return self.list_files(args or ".")
-        
+
         elif command in ("find", "search"):
             return self.search_files(args)
-        
+
         elif command in ("grep", "findtext", "searchtext"):
             return self._handle_grep(args)
-        
+
         elif command in ("run", "exec", "execute", "cmd", "shell"):
             return self.run_command(args)
-        
+
         elif command in ("git", "g"):
             return self._handle_git(args)
-        
+
         elif command in ("cd", "chdir"):
             return self.change_directory(args)
-        
+
         elif command in ("pwd", "where"):
             return self.print_working_dir()
-        
+
         elif command in ("help", "h", "?"):
             return self._show_help()
-        
+
         elif command in ("quit", "exit", "q", "bye"):
             return "EXIT"
-        
-        elif command == "hello" or command == "hi" or command == "hey":
-            return f"Hello! I'm {self.config.agent_name}, your coding agent. Type 'help' to see what I can do."
-        
-        elif command == "who" and "are" in cmd and "you" in cmd:
-            return f"I'm {self.config.agent_name} v0.1.0 - A local coding agent like Codex.\nI can read, write, edit, search files, run commands, and work with git."
-        
+
+        elif command == "version":
+            return "BYTE AGENT v0.1.0 - Like Codex, but local."
+
         else:
-            return self._smart_response(user_input)
+            return self.responder.respond(user_input)
 
     def _handle_write(self, args: str) -> str:
         parts = args.split(" ", 1)
@@ -108,10 +108,7 @@ class ByteAgent:
         parts = args.split(" ", 2)
         if len(parts) < 3:
             return "Usage: edit <filename> <old_text> <new_text>"
-        filename = parts[0]
-        old_text = parts[1].replace("\\n", "\n")
-        new_text = parts[2].replace("\\n", "\n")
-        return self.edit_file(filename, old_text, new_text)
+        return self.edit_file(parts[0], parts[1].replace("\\n", "\n"), parts[2].replace("\\n", "\n"))
 
     def _handle_create(self, args: str) -> str:
         if not args:
@@ -122,11 +119,9 @@ class ByteAgent:
         parts = args.split(" ", 1)
         if len(parts) < 2:
             return "Usage: grep <pattern> <path>"
-        pattern = parts[0]
-        path = parts[1]
-        results = self.grep_content(pattern, path)
+        results = self.grep_content(parts[0], parts[1])
         if not results:
-            return f"No matches found for '{pattern}' in {path}"
+            return f"No matches found"
         output = f"Found {len(results)} matches:\n"
         for r in results[:20]:
             output += f"  {r['file']}:{r['line']}: {r['content']}\n"
@@ -136,89 +131,51 @@ class ByteAgent:
         parts = args.split(maxsplit=1)
         subcmd = parts[0] if parts else "status"
         git_args = parts[1] if len(parts) > 1 else ""
-
-        if subcmd in ("status", "s", "st"):
-            return self.git_status()
-        elif subcmd in ("commit", "ci"):
-            return self.git_commit(git_args or "Update via BYTE AGENT")
-        elif subcmd in ("diff", "d"):
-            return self.git_diff()
-        elif subcmd in ("log", "l"):
-            return self.git_log()
-        elif subcmd in ("add", "a"):
-            return self.run_command(f"git add {git_args or '.'}")
-        elif subcmd in ("push", "p"):
-            return self.run_command("git push")
-        elif subcmd in ("pull",):
-            return self.run_command("git pull")
-        elif subcmd in ("branch", "b"):
-            return self.run_command(f"git branch {git_args}")
-        else:
-            return self.run_command(f"git {args}")
+        cmds = {
+            "status": self.git_status,
+            "commit": lambda: self.git_commit(git_args or "Update via BYTE AGENT"),
+            "diff": self.git_diff,
+            "log": self.git_log,
+            "add": lambda: self.run_command(f"git add {git_args or '.'}"),
+            "push": lambda: self.run_command("git push"),
+            "pull": lambda: self.run_command("git pull"),
+            "branch": lambda: self.run_command(f"git branch {git_args}"),
+        }
+        if subcmd in cmds:
+            return cmds[subcmd]()
+        return self.run_command(f"git {args}")
 
     def _show_help(self) -> str:
-        return """BYTE AGENT - Coding Agent Commands:
+        return (
+            "**BYTE AGENT - Like Codex, but local!**\n\n"
+            "**BUILD STUFF:**\n"
+            "- `create a calculator` - Build a calculator\n"
+            "- `create a todo app` - Todo list\n"
+            "- `create an API` - REST API\n"
+            "- `create a game` - Snake game\n"
+            "- `create a website` - Full HTML site\n"
+            "- `create a login page` - Login form\n"
+            "- `create a password generator` - Password tool\n\n"
+            "**CODE COMMANDS:**\n"
+            "- `read <file>` - View file (with line numbers!)\n"
+            "- `write <file> <content>` - Create/edit file\n"
+            "- `edit <file> <old> <new>` - Replace text\n"
+            "- `ls` - List files\n"
+            "- `find <pattern>` - Search filenames\n"
+            "- `grep <text> <path>` - Search file contents\n\n"
+            "**SYSTEM:**\n"
+            "- `run <command>` - Execute terminal command\n"
+            "- `git status` - Git operations\n"
+            "- `cd <dir>` - Navigate\n"
+            "- `pwd` - Current directory\n\n"
+            "**LEARN:**\n"
+            "- `explain a function` - Learn concepts\n"
+            "- `teach me python` - Start tutorial\n"
+            "- `what is a variable?` - Quick explainer"
+        )
 
-FILE OPERATIONS:
-  read <file>           Read file contents
-  write <file> <text>   Write content to file
-  edit <file> <old> <new>  Replace text in file
-  create <file>         Create empty file
-  ls / list / files     List files in directory
+    # === FILE TOOLS ===
 
-SEARCH:
-  find <pattern>        Find files by name
-  grep <text> <path>    Search text in files
-
-TERMINAL:
-  run <command>         Execute shell command
-
-GIT:
-  git status            Show git status
-  git commit <msg>      Commit changes
-  git diff              Show changes
-  git log               Show commit history
-  git add <files>       Stage files
-  git push              Push to remote
-
-NAVIGATION:
-  cd <path>             Change directory
-  pwd                   Show current directory
-
-OTHER:
-  help                  Show this help
-  quit / exit           Exit BYTE AGENT"""
-
-    def _smart_response(self, user_input: str) -> str:
-        lower = user_input.lower()
-
-        if any(w in lower for w in ["create a", "make a", "write a", "generate"]):
-            return self._handle_code_request(user_input)
-        elif any(w in lower for w in ["fix", "debug", "error", "bug"]):
-            return self._handle_debug_request(user_input)
-        elif any(w in lower for w in ["explain", "what does", "how does"]):
-            return self._handle_explain_request(user_input)
-        else:
-            return f"I can help with coding tasks. Try:\n- 'read <file>' to view code\n- 'write <file> <content>' to create code\n- 'run <cmd>' to execute commands\n- 'help' for all commands"
-
-    def _handle_code_request(self, user_input: str) -> str:
-        lower = user_input.lower()
-        if "python" in lower or ".py" in lower:
-            return "Tell me what Python code to create. Example:\ncreate hello.py\nThen I'll help you write it."
-        elif "javascript" in lower or "js" in lower or ".js" in lower:
-            return "Tell me what JavaScript code to create. Example:\ncreate app.js"
-        elif "html" in lower:
-            return "Tell me what HTML to create. Example:\ncreate index.html"
-        else:
-            return "What language? Then use:\ncreate <filename>\nwrite <filename> <code>"
-
-    def _handle_debug_request(self, user_input: str) -> str:
-        return "To debug, I can:\n1. Read your code: read <file>\n2. Search for errors: grep 'error' .\n3. Run and check: run <command>\n\nShow me the error or file to debug."
-
-    def _handle_explain_request(self, user_input: str) -> str:
-        return "To explain code, use:\nread <filename>\nI'll analyze and explain it."
-
-    # Tool implementations
     def read_file(self, path: str) -> str:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -250,9 +207,8 @@ OTHER:
                 content = f.read()
             if old_text not in content:
                 return f"Text not found in {path}"
-            new_content = content.replace(old_text, new_text, 1)
             with open(path, "w", encoding="utf-8") as f:
-                f.write(new_content)
+                f.write(content.replace(old_text, new_text, 1))
             return f"Edited: {path}"
         except Exception as e:
             return f"Error editing {path}: {e}"
@@ -273,66 +229,63 @@ OTHER:
                     items.append(f"  [DIR]  {item.name}/")
                 else:
                     size = item.stat().st_size
-                    items.append(f"  [FILE] {item.name} ({size} bytes)")
+                    name = item.name
+                    items.append(f"  [FILE] {name} ({size} bytes)")
             if not items:
-                return f"Empty directory: {path}"
+                return f"Empty directory"
             return f"Contents of {path}:\n" + "\n".join(items)
         except Exception as e:
-            return f"Error listing {path}: {e}"
+            return f"Error: {e}"
 
     def search_files(self, pattern: str) -> str:
         try:
             matches = list(Path(".").rglob(pattern))
             if not matches:
                 return f"No files matching: {pattern}"
-            output = f"Files matching '{pattern}':\n"
+            out = f"Files matching '{pattern}':\n"
             for m in matches[:30]:
-                output += f"  {m}\n"
-            return output
+                out += f"  {m}\n"
+            return out
         except Exception as e:
-            return f"Error searching: {e}"
+            return f"Error: {e}"
 
     def grep_content(self, pattern: str, path: str = ".") -> List[Dict]:
         results = []
         try:
             regex = re.compile(pattern, re.IGNORECASE)
-            for file_path in Path(path).rglob("*"):
-                if file_path.is_file() and file_path.stat().st_size < 1000000:
+            for fp in Path(path).rglob("*"):
+                if fp.is_file() and fp.stat().st_size < 1_000_000:
                     try:
-                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        with open(fp, "r", encoding="utf-8", errors="ignore") as f:
                             for i, line in enumerate(f, 1):
                                 if regex.search(line):
-                                    results.append({
-                                        "file": str(file_path),
-                                        "line": i,
-                                        "content": line.strip()[:100]
-                                    })
+                                    results.append({"file": str(fp), "line": i, "content": line.strip()[:100]})
                     except:
                         pass
         except:
             pass
         return results[:50]
 
+    # === TERMINAL ===
+
     def run_command(self, command: str) -> str:
         try:
             result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.context.working_directory,
-                timeout=60
+                command, shell=True, capture_output=True, text=True,
+                cwd=self.context.working_directory, timeout=60
             )
-            output = result.stdout
+            out = result.stdout
             if result.stderr:
-                output += f"\nSTDERR: {result.stderr}"
+                out += f"\nSTDERR: {result.stderr}"
             if result.returncode != 0:
-                output += f"\nExit code: {result.returncode}"
-            return output.strip() or "Command executed successfully"
+                out += f"\nExit code: {result.returncode}"
+            return out.strip() or "Command executed successfully"
         except subprocess.TimeoutExpired:
             return "Command timed out (60s limit)"
         except Exception as e:
             return f"Error: {e}"
+
+    # === GIT ===
 
     def git_status(self) -> str:
         return self.run_command("git status")

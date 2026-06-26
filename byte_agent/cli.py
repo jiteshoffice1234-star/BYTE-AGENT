@@ -1,4 +1,4 @@
-"""BYTE AGENT CLI - Like Codex."""
+"""BYTE AGENT CLI - Like Codex, but local."""
 
 import sys
 import os
@@ -17,41 +17,41 @@ from .core.config import Config
 console = Console()
 
 
-def print_banner():
-    banner = """
- ___  ___  ________  _________
-|\\  \\|\\  \\|\\   __  \\|\\___   ___\\
-| \\   __  \\|  \\|\\  \\|___ \\  \\_|
-| \\  \\ \\  \\|   \\_\\  \\   \\ \\  \\
-| \\  \\_\\  \\|  ___ \\__\\   \\ \\  \\
-| \\________\\|\\__\\|__|\\    \\ \\__\\
-|_______|____|_______|____|_____|
-
- v0.1.0 - Local Coding Agent
-"""
-    console.print(Panel(banner.strip(), style="bold cyan", subtitle="Type 'help' for commands"))
+def banner():
+    b = """
+    ===============================================
+       BBBB  Y   Y TTTTT EEEE
+       B   B  Y Y    T   E
+       BBBB    Y     T   EEE
+       B   B   Y     T   E
+       BBBB    Y     T   EEEE
+    ===============================================
+       v0.1.0 - Local Coding Agent
+       Like Codex, but on YOUR machine
+    ===============================================
+    """
+    console.print(Panel(b.strip(), style="bold cyan"))
 
 
 def main():
-    print_banner()
-
+    banner()
     config = Config.load()
     agent = ByteAgent(config)
-
-    console.print(f"[green]Connected to: {agent.context.working_directory}[/green]")
-    console.print("[dim]Type 'help' for commands, 'quit' to exit[/dim]\n")
+    cwd_display = agent.context.working_directory
+    console.print(f"[green]>> Connected:[/green] {cwd_display}")
+    console.print("[dim]>> Type 'help' for commands, 'quit' to exit[/dim]\n")
 
     while True:
         try:
-            cwd = os.path.basename(agent.context.working_directory)
-            user_input = input(f"[{cwd}]> ")
+            short = os.path.basename(agent.context.working_directory) or agent.context.working_directory
+            inp = input(f"[{short}]> ")
         except (EOFError, KeyboardInterrupt):
             break
 
-        if not user_input.strip():
+        if not inp.strip():
             continue
 
-        response = agent.process_input(user_input)
+        response = agent.process_input(inp)
 
         if response == "EXIT":
             break
@@ -62,13 +62,16 @@ def main():
             console.print(Panel(response, title="Files", border_style="green"))
         elif response.startswith("Error") or response.startswith("STDERR"):
             console.print(Panel(response, title="Error", border_style="red"))
-        elif response.startswith("BYTE AGENT -"):
-            console.print(Panel(Markdown(response), title="Help", border_style="yellow"))
+        elif response.startswith("```"):
+            lines = response.split("\n")
+            lang = lines[0].replace("```", "").strip()
+            code = "\n".join(lines[1:-1])
+            console.print(Syntax(code, lang or "python", theme="monokai"))
         else:
-            console.print(Panel(response, title="BYTE", border_style="cyan"))
+            console.print(Panel(Markdown(response), title="BYTE", border_style="cyan"))
         console.print()
 
-    console.print("[yellow]Goodbye![/yellow]")
+    console.print("[yellow]>> BYTE AGENT disconnected[/yellow]")
 
 
 if __name__ == "__main__":
