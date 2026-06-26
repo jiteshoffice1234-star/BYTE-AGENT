@@ -44,6 +44,62 @@ class ByteAgent:
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(self.context.get_history())
 
+        provider = self.config.model_provider.lower()
+
+        if provider == "demo":
+            return self._demo_response(user_input)
+        elif provider == "ollama":
+            return self._call_ollama(messages)
+        elif provider == "openai":
+            return self._call_openai(messages)
+        else:
+            return self._call_openai_compatible(messages)
+
+    def _demo_response(self, user_input: str) -> str:
+        """Demo mode - responds without AI."""
+        user_lower = user_input.lower()
+
+        if any(w in user_lower for w in ["hello", "hi", "hey"]):
+            return f"Hello! I'm {self.config.agent_name}, your coding assistant. How can I help?"
+        elif "help" in user_lower:
+            return """I can help you with:
+- Reading, writing, and editing files
+- Running terminal commands
+- Searching code
+- Git operations
+- Code review
+
+Just ask me anything!"""
+        elif "list files" in user_lower or "what files" in user_lower:
+            files = self._tools["list_files"](".")
+            return "Files in current directory:\n" + "\n".join(files[:20])
+        elif "read" in user_lower:
+            return "Tell me which file you'd like me to read."
+        elif "git" in user_lower:
+            return self._tools["git_status"]()
+        elif "who are you" in user_lower:
+            return f"I'm {self.config.agent_name}, a local AI coding agent. I'm running in demo mode right now."
+        else:
+            return f"I heard: '{user_input}'\n\nI'm in demo mode. To use full AI, set up Ollama or add an OpenAI API key."
+
+    def _call_ollama(self, messages: List[Dict]) -> str:
+        try:
+            import httpx
+            url = f"{self.config.base_url or 'http://localhost:11434'}/api/chat"
+            payload = {
+                "model": self.config.model,
+                "messages": messages,
+                "stream": False
+            }
+            with httpx.Client(timeout=120) as client:
+                response = client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("message", {}).get("content", "No response")
+        except Exception as e:
+            return f"Ollama error: {e}\n\nMake sure Ollama is running: ollama serve"
+
+    def _call_openai(self, messages: List[Dict]) -> str:
         try:
             from openai import OpenAI
             client = OpenAI(
@@ -57,7 +113,25 @@ class ByteAgent:
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"Error: {str(e)}"
+            return f"OpenAI error: {e}"
+
+    def _call_openai_compatible(self, messages: List[Dict]) -> str:
+        try:
+            import httpx
+            url = f"{self.config.base_url}/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {self.config.api_key}"}
+            payload = {
+                "model": self.config.model,
+                "messages": messages,
+                "temperature": 0.7
+            }
+            with httpx.Client(timeout=120) as client:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            return f"API error: {e}"
 
     def _build_system_prompt(self) -> str:
         return f"""You are {self.config.agent_name}, a personalized AI coding agent.
